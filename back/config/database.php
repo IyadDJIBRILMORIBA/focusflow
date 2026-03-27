@@ -5,8 +5,9 @@ use Pdo\Mysql;
 
 // Force pgsql in production, sqlite in local/testing
 $defaultConnection = env('DB_CONNECTION');
+$isProduction = env('APP_ENV') === 'production';
 
-if (env('APP_ENV') === 'production') {
+if ($isProduction) {
     // Always use PostgreSQL in production
     $defaultConnection = 'pgsql';
 } elseif (! $defaultConnection) {
@@ -14,20 +15,26 @@ if (env('APP_ENV') === 'production') {
     $defaultConnection = 'sqlite';
 }
 
-// Get database URL from OS environment (highest priority for Render)
-$databaseUrl = env('DB_URL') 
-    ?: env('DATABASE_URL') 
-    ?: env('RENDER_POSTGRESQL_INTERNAL_URL') 
-    ?: env('RENDER_POSTGRESQL_URL') 
-    ?: '';
+// Try to read database URL from OS environment variables directly (bypass .env file for Render)
+// In production, Render injects these as OS env vars, not in .env
+$databaseUrl = $_ENV['DB_URL'] 
+    ?? $_ENV['DATABASE_URL'] 
+    ?? $_ENV['RENDER_POSTGRESQL_INTERNAL_URL'] 
+    ?? $_ENV['RENDER_POSTGRESQL_URL'] 
+    ?? env('DB_URL') 
+    ?? env('DATABASE_URL') 
+    ?? env('RENDER_POSTGRESQL_INTERNAL_URL') 
+    ?? env('RENDER_POSTGRESQL_URL') 
+    ?? '';
+
+// Default credentials (SQLite or local defaults)
+$dbHost = '127.0.0.1';
+$dbPort = '5432';
+$dbDatabase = 'laravel';
+$dbUsername = 'root';
+$dbPassword = '';
 
 // Parse PostgreSQL URL if present
-$dbHost = env('DB_HOST', env('PGHOST', env('RENDER_POSTGRESQL_HOST', '127.0.0.1')));
-$dbPort = env('DB_PORT', env('PGPORT', env('RENDER_POSTGRESQL_PORT', '5432')));
-$dbDatabase = env('DB_DATABASE', env('PGDATABASE', env('RENDER_POSTGRESQL_DATABASE', 'laravel')));
-$dbUsername = env('DB_USERNAME', env('PGUSER', env('RENDER_POSTGRESQL_USER', 'root')));
-$dbPassword = env('DB_PASSWORD', env('PGPASSWORD', env('RENDER_POSTGRESQL_PASSWORD', '')));
-
 if ($databaseUrl && preg_match('/^postgres(ql)?:\/\//', $databaseUrl)) {
     $parsedUrl = parse_url($databaseUrl);
     if (is_array($parsedUrl)) {

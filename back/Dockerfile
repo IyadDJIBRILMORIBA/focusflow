@@ -3,6 +3,10 @@ FROM php:8.4-cli-alpine
 RUN apk add --no-cache git unzip icu-dev oniguruma-dev libzip-dev postgresql-dev postgresql-client
 RUN docker-php-ext-install pdo_mysql pdo_pgsql
 
+# Ensure PHP reads environment variables (not just from .env file)
+RUN echo "variables_order=EGPCS" >> /usr/local/etc/php/php.ini && \
+    echo "auto_prepend_file=" >> /usr/local/etc/php/php.ini
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
