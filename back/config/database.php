@@ -3,43 +3,40 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
-$databaseUrl = env('DB_URL', env('DATABASE_URL', env('RENDER_POSTGRESQL_INTERNAL_URL', env('RENDER_POSTGRESQL_URL'))));
-$isPostgresUrl = is_string($databaseUrl) && preg_match('/^postgres(ql)?:\/\//i', $databaseUrl) === 1;
+// Force pgsql in production, sqlite in local/testing
+$defaultConnection = env('DB_CONNECTION');
 
+if (env('APP_ENV') === 'production') {
+    // Always use PostgreSQL in production
+    $defaultConnection = 'pgsql';
+} elseif (! $defaultConnection) {
+    // Local/testing default to SQLite
+    $defaultConnection = 'sqlite';
+}
+
+// Get database URL from OS environment (highest priority for Render)
+$databaseUrl = env('DB_URL') 
+    ?: env('DATABASE_URL') 
+    ?: env('RENDER_POSTGRESQL_INTERNAL_URL') 
+    ?: env('RENDER_POSTGRESQL_URL') 
+    ?: '';
+
+// Parse PostgreSQL URL if present
 $dbHost = env('DB_HOST', env('PGHOST', env('RENDER_POSTGRESQL_HOST', '127.0.0.1')));
 $dbPort = env('DB_PORT', env('PGPORT', env('RENDER_POSTGRESQL_PORT', '5432')));
 $dbDatabase = env('DB_DATABASE', env('PGDATABASE', env('RENDER_POSTGRESQL_DATABASE', 'laravel')));
 $dbUsername = env('DB_USERNAME', env('PGUSER', env('RENDER_POSTGRESQL_USER', 'root')));
 $dbPassword = env('DB_PASSWORD', env('PGPASSWORD', env('RENDER_POSTGRESQL_PASSWORD', '')));
 
-if ($isPostgresUrl) {
-    $parsedDatabaseUrl = parse_url($databaseUrl);
-
-    if (is_array($parsedDatabaseUrl)) {
-        $dbHost = $parsedDatabaseUrl['host'] ?? $dbHost;
-        $dbPort = isset($parsedDatabaseUrl['port']) ? (string) $parsedDatabaseUrl['port'] : $dbPort;
-        $dbDatabase = isset($parsedDatabaseUrl['path']) ? ltrim($parsedDatabaseUrl['path'], '/') : $dbDatabase;
-        $dbUsername = isset($parsedDatabaseUrl['user']) ? urldecode($parsedDatabaseUrl['user']) : $dbUsername;
-        $dbPassword = isset($parsedDatabaseUrl['pass']) ? urldecode($parsedDatabaseUrl['pass']) : $dbPassword;
+if ($databaseUrl && preg_match('/^postgres(ql)?:\/\//', $databaseUrl)) {
+    $parsedUrl = parse_url($databaseUrl);
+    if (is_array($parsedUrl)) {
+        $dbHost = $parsedUrl['host'] ?? $dbHost;
+        $dbPort = isset($parsedUrl['port']) ? (string) $parsedUrl['port'] : $dbPort;
+        $dbDatabase = isset($parsedUrl['path']) ? ltrim($parsedUrl['path'], '/') : $dbDatabase;
+        $dbUsername = isset($parsedUrl['user']) ? urldecode($parsedUrl['user']) : $dbUsername;
+        $dbPassword = isset($parsedUrl['pass']) ? urldecode($parsedUrl['pass']) : $dbPassword;
     }
-}
-
-$hasPostgresSignals =
-    $isPostgresUrl
-    || (bool) env('RENDER_POSTGRESQL_INTERNAL_URL')
-    || (bool) env('RENDER_POSTGRESQL_URL')
-    || (bool) env('RENDER_POSTGRESQL_HOST')
-    || (bool) env('PGHOST')
-    || (bool) env('DB_HOST');
-
-$defaultConnection = env('DB_CONNECTION');
-
-if ($hasPostgresSignals) {
-    $defaultConnection = 'pgsql';
-}
-
-if (! $defaultConnection) {
-    $defaultConnection = env('APP_ENV') === 'production' ? 'pgsql' : 'sqlite';
 }
 
 return [
