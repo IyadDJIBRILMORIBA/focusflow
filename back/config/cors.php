@@ -2,7 +2,7 @@
 
 $allowedOrigins = array_values(array_filter(array_map(
     'trim',
-    explode(',', env('CORS_ALLOWED_ORIGINS', env('FRONTEND_URL', 'http://localhost:3000')))
+    explode(',', env('CORS_ALLOWED_ORIGINS', env('FRONTEND_URL', '*')))
 )));
 
 $allowedOriginPatterns = array_values(array_filter(array_map(
