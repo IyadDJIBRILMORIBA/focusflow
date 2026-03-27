@@ -17,6 +17,10 @@ services:
         generateValue: true
       - key: DB_CONNECTION
         value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: focusflow-db
+          property: connectionString
       - key: DB_HOST
         fromDatabase:
           name: focusflow-db
