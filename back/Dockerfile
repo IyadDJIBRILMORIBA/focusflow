@@ -16,6 +16,10 @@ RUN php artisan key:generate --force
 
 EXPOSE 4000
 
-RUN printf '#!/bin/sh\nset -e\necho "=== [BOOTSTRAP] Starting Laravel with Render PostgreSQL ===" >&2\nrm -rf bootstrap/cache/config.php storage/framework/cache/bootstrap.php 2>/dev/null || true\nphp artisan config:clear --quiet 2>/dev/null || true\nphp artisan cache:clear --quiet 2>/dev/null || true\nphp artisan migrate --force --quiet\necho "=== [BOOTSTRAP] All migrations complete, starting server ===" >&2\nphp artisan serve --host=0.0.0.0 --port=${PORT:-4000}\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Create a custom php.ini to ensure environment variables are available
+RUN echo "variables_order = \"EGPCS\"" >> /usr/local/etc/php/conf.d/laravel.ini && \
+    echo "display_errors = Off" >> /usr/local/etc/php/conf.d/laravel.ini
+
+RUN printf '#!/bin/sh\nset -a\nsource /proc/self/environ | tr "\\000" "\\n" > /tmp/env.source\nset +a\nset -e\necho "=== [BOOTSTRAP] Starting Laravel with Render PostgreSQL ===" >&2\necho "DATABASE_URL=$DATABASE_URL" >&2\nrm -rf bootstrap/cache/config.php storage/framework/cache/bootstrap.php 2>/dev/null || true\nphp artisan config:clear --quiet 2>/dev/null || true\nphp artisan cache:clear --quiet 2>/dev/null || true\nphp artisan migrate --force --quiet\necho "=== [BOOTSTRAP] All migrations complete, starting server ===" >&2\nexec php artisan serve --host=0.0.0.0 --port=${PORT:-4000}\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 CMD ["/app/entrypoint.sh"]
