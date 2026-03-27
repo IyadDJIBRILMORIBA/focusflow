@@ -3,9 +3,20 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
-$databaseUrl = env('DB_URL', env('DATABASE_URL'));
+$databaseUrl = env(
+    'DB_URL',
+    env(
+        'DATABASE_URL',
+        env('RENDER_POSTGRESQL_INTERNAL_URL', env('RENDER_POSTGRESQL_URL'))
+    )
+);
 $isPostgresUrl = is_string($databaseUrl) && preg_match('/^postgres(ql)?:\/\//i', $databaseUrl) === 1;
-$hasDatabaseHost = is_string(env('DB_HOST')) && env('DB_HOST') !== '';
+$dbHost = env('DB_HOST', env('PGHOST', env('RENDER_POSTGRESQL_HOST', '127.0.0.1')));
+$dbPort = env('DB_PORT', env('PGPORT', env('RENDER_POSTGRESQL_PORT', '5432')));
+$dbDatabase = env('DB_DATABASE', env('PGDATABASE', env('RENDER_POSTGRESQL_DATABASE', 'laravel')));
+$dbUsername = env('DB_USERNAME', env('PGUSER', env('RENDER_POSTGRESQL_USER', 'root')));
+$dbPassword = env('DB_PASSWORD', env('PGPASSWORD', env('RENDER_POSTGRESQL_PASSWORD', '')));
+$hasDatabaseHost = (bool) env('DB_HOST') || (bool) env('PGHOST') || (bool) env('RENDER_POSTGRESQL_HOST');
 
 $defaultConnection = env('DB_CONNECTION');
 
@@ -109,11 +120,11 @@ return [
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => $databaseUrl,
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
-            'database' => env('DB_DATABASE', 'laravel'),
-            'username' => env('DB_USERNAME', 'root'),
-            'password' => env('DB_PASSWORD', ''),
+            'host' => $dbHost,
+            'port' => $dbPort,
+            'database' => $dbDatabase,
+            'username' => $dbUsername,
+            'password' => $dbPassword,
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
