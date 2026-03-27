@@ -1,27 +1,65 @@
-# FocusFlow - Structure Front/Back
+# FocusFlow
 
-Le projet est maintenant organisé en deux dossiers indépendants :
+Architecture actuelle :
 
-- `front/` : application React + Vite (design inchangé)
-- `back/` : API Express TypeScript
+- `front/` : React + Vite
+- `back/` : Laravel API (Sanctum)
+- `db` : MySQL (Docker)
+- `back-node/` : ancien backend Node conservé en backup
 
-## Lancer en local
+## Pourquoi ce changement
 
-Prérequis : Node.js 20+
+Le backend localStorage ne permettait pas une synchronisation fiable multi-appareil.
+Désormais, l'authentification et les données (profil + tâches) sont persistées en base SQL via API sécurisée.
+
+## Configuration locale (sans Docker)
+
+Prérequis : Node.js 20+, PHP 8.3+, Composer, MySQL.
 
 1. Installer les dépendances :
-   - `npm run install:all`
+
+- `npm run install:front`
+- `npm run install:back`
+
 2. Configurer les variables :
-   - Front: créer `front/.env.local` avec `GEMINI_API_KEY=...`
-   - Back: copier `back/.env.example` vers `back/.env`
-3. Démarrer dans 2 terminaux :
-   - `npm run dev:front`
-   - `npm run dev:back`
 
-## Build
+- `cp front/.env.example front/.env.local`
+- `cp back/.env.example back/.env`
 
-- `npm run build:all`
+3. Dans `back/.env`, adapter la base MySQL si nécessaire.
 
-## Docker
+4. Migrer la base :
+
+- `cd back && php artisan migrate`
+
+5. Lancer les services :
+
+- `npm run dev:back`
+- `npm run dev:front`
+
+Frontend : `http://localhost:3000`  
+API Laravel : `http://localhost:4000/api`
+
+## Configuration Docker
 
 - `docker compose up --build`
+
+Services exposés :
+
+- Front : `http://localhost:3000`
+- API : `http://localhost:4000/api`
+- MySQL : `localhost:3307`
+
+## Endpoints principaux
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
+- `GET /api/profile`
+- `PUT /api/profile`
+- `GET /api/tasks`
+- `POST /api/tasks`
+- `PUT /api/tasks/{taskId}`
+- `DELETE /api/tasks/{taskId}`
+- `DELETE /api/account`

@@ -1,111 +1,183 @@
 import { Task, UserProfile } from '../types';
 
-const PROFILE_STORAGE_KEY = 'focusflow_local_profiles';
-const TASK_STORAGE_KEY = 'focusflow_local_tasks';
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:4000/api';
+export const AUTH_TOKEN_STORAGE_KEY = 'focusflow_auth_token';
 
-type PersistedTask = Omit<Task, 'deadline' | 'createdAt' | 'completedAt'> & {
+type Listener<T> = (value: T) => void;
+
+const profileListeners = new Map<string, Set<Listener<UserProfile | null>>>();
+const taskListeners = new Map<string, Set<Listener<Task[]>>>();
+
+let profilePollingTimer: number | null = null;
+let taskPollingTimer: number | null = null;
+
+type ApiTask = Omit<Task, 'deadline' | 'createdAt' | 'completedAt'> & {
   deadline: string;
   createdAt: string;
-  completedAt?: string;
+  completedAt?: string | null;
 };
 
-const profileListeners = new Map<string, Set<(profile: UserProfile | null) => void>>();
-const taskListeners = new Map<string, Set<(tasks: Task[]) => void>>();
+type ApiProfile = Omit<UserProfile, 'lastActive'> & {
+  lastActive?: string | null;
+};
 
-function loadProfiles(): Record<string, UserProfile> {
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
-    return Object.fromEntries(
-      Object.entries(parsed).map(([uid, profile]) => {
-        const typedProfile = profile as UserProfile & { lastActive?: string };
-        return [uid, {
-          ...typedProfile,
-          lastActive: typedProfile.lastActive ? new Date(typedProfile.lastActive) : undefined,
-        }];
-      }),
-    );
-  } catch {
-    return {};
-  }
+function getToken() {
+  return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
-function saveProfiles(profiles: Record<string, UserProfile>) {
-  const serializableProfiles = Object.fromEntries(
-    Object.entries(profiles).map(([uid, profile]) => [uid, {
-      ...profile,
-      lastActive: profile.lastActive ? profile.lastActive.toISOString() : undefined,
-    }]),
-  );
-  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(serializableProfiles));
-}
-
-function loadTasks(): Task[] {
-  try {
-    const raw = localStorage.getItem(TASK_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.map((task) => {
-      const typedTask = task as PersistedTask;
-      return {
-        ...typedTask,
-        deadline: new Date(typedTask.deadline),
-        createdAt: new Date(typedTask.createdAt),
-        completedAt: typedTask.completedAt ? new Date(typedTask.completedAt) : undefined,
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
-function saveTasks(tasks: Task[]) {
-  const persistedTasks: PersistedTask[] = tasks.map((task) => ({
+function mapTaskFromApi(task: ApiTask): Task {
+  return {
     ...task,
-    deadline: task.deadline.toISOString(),
-    createdAt: task.createdAt.toISOString(),
-    completedAt: task.completedAt ? task.completedAt.toISOString() : undefined,
-  }));
-
-  localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(persistedTasks));
+    deadline: new Date(task.deadline),
+    createdAt: new Date(task.createdAt),
+    completedAt: task.completedAt ? new Date(task.completedAt) : undefined,
+  };
 }
 
-function generateTaskId() {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
+function mapTaskToApi(task: Partial<Task>) {
+  const payload: Record<string, unknown> = {};
+
+  if (task.title !== undefined) payload.title = task.title;
+  if (task.description !== undefined) payload.description = task.description;
+  if (task.estimatedDuration !== undefined) payload.estimatedDuration = task.estimatedDuration;
+  if (task.deadline !== undefined) payload.deadline = task.deadline.toISOString();
+  if (task.priority !== undefined) payload.priority = task.priority;
+  if (task.energyRequired !== undefined) payload.energyRequired = task.energyRequired;
+  if (task.category !== undefined) payload.category = task.category;
+  if (task.tags !== undefined) payload.tags = task.tags;
+  if (task.status !== undefined) payload.status = task.status;
+  if (task.completedAt !== undefined) payload.completedAt = task.completedAt ? task.completedAt.toISOString() : null;
+  if (task.aiFeedback !== undefined) payload.aiFeedback = task.aiFeedback;
+  if (task.isOptimistic !== undefined) payload.isOptimistic = task.isOptimistic;
+  if (task.subTasks !== undefined) payload.subTasks = task.subTasks;
+
+  return payload;
+}
+
+function mapProfileFromApi(profile: ApiProfile): UserProfile {
+  return {
+    ...profile,
+    lastActive: profile.lastActive ? new Date(profile.lastActive) : undefined,
+  };
+}
+
+function mapProfileToApi(profile: Partial<UserProfile>) {
+  const payload: Record<string, unknown> = {};
+
+  if (profile.displayName !== undefined) payload.displayName = profile.displayName;
+  if (profile.dailyCapacity !== undefined) payload.dailyCapacity = profile.dailyCapacity;
+  if (profile.streak !== undefined) payload.streak = profile.streak;
+  if (profile.lastActive !== undefined) payload.lastActive = profile.lastActive ? profile.lastActive.toISOString() : null;
+  if (profile.focusScore !== undefined) payload.focusScore = profile.focusScore;
+  if (profile.theme !== undefined) payload.theme = profile.theme;
+  if (profile.language !== undefined) payload.language = profile.language;
+  if (profile.notificationsEnabled !== undefined) payload.notificationsEnabled = profile.notificationsEnabled;
+
+  return payload;
+}
+
+async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set('Accept', 'application/json');
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
-  return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+  const token = getToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  });
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const message = data?.message ?? 'Erreur réseau/API';
+    throw new Error(message);
+  }
+
+  return data as T;
 }
 
-function notifyProfile(uid: string) {
+async function refreshProfile(uid: string) {
   const listeners = profileListeners.get(uid);
   if (!listeners || listeners.size === 0) return;
 
-  const profile = loadProfiles()[uid] ?? null;
-  listeners.forEach((listener) => listener(profile));
+  try {
+    const apiProfile = await apiRequest<ApiProfile>('/profile');
+    const profile = mapProfileFromApi(apiProfile);
+    listeners.forEach((listener) => listener(profile));
+  } catch {
+    listeners.forEach((listener) => listener(null));
+  }
 }
 
-function notifyTasks(uid: string) {
+async function refreshTasks(uid: string) {
   const listeners = taskListeners.get(uid);
   if (!listeners || listeners.size === 0) return;
 
-  const tasks = loadTasks()
-    .filter((task) => task.userId === uid)
-    .sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
-  listeners.forEach((listener) => listener(tasks));
+  try {
+    const apiTasks = await apiRequest<ApiTask[]>('/tasks');
+    const tasks = apiTasks.map(mapTaskFromApi).sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
+    listeners.forEach((listener) => listener(tasks));
+  } catch {
+    listeners.forEach((listener) => listener([]));
+  }
+}
+
+function startProfilePolling(uid: string) {
+  if (profilePollingTimer) return;
+  profilePollingTimer = window.setInterval(() => {
+    refreshProfile(uid).catch(() => undefined);
+  }, 10000);
+}
+
+function stopProfilePolling() {
+  if (!profilePollingTimer) return;
+  window.clearInterval(profilePollingTimer);
+  profilePollingTimer = null;
+}
+
+function startTaskPolling(uid: string) {
+  if (taskPollingTimer) return;
+  taskPollingTimer = window.setInterval(() => {
+    refreshTasks(uid).catch(() => undefined);
+  }, 8000);
+}
+
+function stopTaskPolling() {
+  if (!taskPollingTimer) return;
+  window.clearInterval(taskPollingTimer);
+  taskPollingTimer = null;
 }
 
 export const firebaseService = {
+  setAuthToken: (token: string) => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  },
+
+  clearAuthToken: () => {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  },
+
+  getAuthToken: () => getToken(),
+
   subscribeToProfile: (uid: string, callback: (profile: UserProfile | null) => void) => {
     const listeners = profileListeners.get(uid) ?? new Set();
     listeners.add(callback);
     profileListeners.set(uid, listeners);
 
-    callback(loadProfiles()[uid] ?? null);
+    refreshProfile(uid).catch(() => callback(null));
+    startProfilePolling(uid);
 
     return () => {
       const currentListeners = profileListeners.get(uid);
@@ -113,31 +185,25 @@ export const firebaseService = {
       currentListeners.delete(callback);
       if (currentListeners.size === 0) {
         profileListeners.delete(uid);
+        stopProfilePolling();
       }
     };
   },
 
   createProfile: async (profile: UserProfile) => {
-    const profiles = loadProfiles();
-    profiles[profile.uid] = {
-      ...profile,
-      lastActive: profile.lastActive ?? new Date(),
-    };
-    saveProfiles(profiles);
-    notifyProfile(profile.uid);
+    await apiRequest<ApiProfile>('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(mapProfileToApi(profile)),
+    });
+    await refreshProfile(profile.uid);
   },
 
   updateProfile: async (uid: string, data: Partial<UserProfile>) => {
-    const profiles = loadProfiles();
-    const currentProfile = profiles[uid];
-    if (!currentProfile) return;
-
-    profiles[uid] = {
-      ...currentProfile,
-      ...data,
-    };
-    saveProfiles(profiles);
-    notifyProfile(uid);
+    await apiRequest<ApiProfile>('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(mapProfileToApi(data)),
+    });
+    await refreshProfile(uid);
   },
 
   subscribeToTasks: (uid: string, callback: (tasks: Task[]) => void) => {
@@ -145,10 +211,8 @@ export const firebaseService = {
     listeners.add(callback);
     taskListeners.set(uid, listeners);
 
-    const currentTasks = loadTasks()
-      .filter((task) => task.userId === uid)
-      .sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
-    callback(currentTasks);
+    refreshTasks(uid).catch(() => callback([]));
+    startTaskPolling(uid);
 
     return () => {
       const currentListeners = taskListeners.get(uid);
@@ -156,67 +220,50 @@ export const firebaseService = {
       currentListeners.delete(callback);
       if (currentListeners.size === 0) {
         taskListeners.delete(uid);
+        stopTaskPolling();
       }
     };
   },
 
   addTask: async (task: Omit<Task, 'id'>) => {
-    const tasks = loadTasks();
-    const newTask: Task = {
-      ...task,
-      id: generateTaskId(),
-      createdAt: task.createdAt ?? new Date(),
-      completedAt: task.completedAt,
-    };
-
-    tasks.push(newTask);
-    saveTasks(tasks);
-    notifyTasks(newTask.userId);
-    return newTask.id;
+    const createdTask = await apiRequest<ApiTask>('/tasks', {
+      method: 'POST',
+      body: JSON.stringify(mapTaskToApi(task)),
+    });
+    await refreshTasks(task.userId);
+    return createdTask.id;
   },
 
   updateTask: async (taskId: string, data: Partial<Task>) => {
-    const tasks = loadTasks();
-    const index = tasks.findIndex((task) => task.id === taskId);
-    if (index === -1) return;
+    await apiRequest<ApiTask>(`/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(mapTaskToApi(data)),
+    });
 
-    const currentTask = tasks[index];
-    const updatedTask: Task = {
-      ...currentTask,
-      ...data,
-      completedAt:
-        data.status === 'completed' && !data.completedAt
-          ? new Date()
-          : data.status === 'pending'
-            ? undefined
-            : (data.completedAt ?? currentTask.completedAt),
-    };
-
-    tasks[index] = updatedTask;
-    saveTasks(tasks);
-    notifyTasks(updatedTask.userId);
+    for (const [uid] of taskListeners) {
+      await refreshTasks(uid);
+    }
   },
 
   deleteTask: async (taskId: string) => {
-    const tasks = loadTasks();
-    const taskToDelete = tasks.find((task) => task.id === taskId);
-    if (!taskToDelete) return;
+    await apiRequest<void>(`/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
 
-    const nextTasks = tasks.filter((task) => task.id !== taskId);
-    saveTasks(nextTasks);
-    notifyTasks(taskToDelete.userId);
+    for (const [uid] of taskListeners) {
+      await refreshTasks(uid);
+    }
   },
 
-  deleteAccount: async (uid: string) => {
-    const profiles = loadProfiles();
-    delete profiles[uid];
-    saveProfiles(profiles);
+  deleteAccount: async (_uid: string) => {
+    await apiRequest<void>('/account', { method: 'DELETE' });
+    firebaseService.clearAuthToken();
 
-    const tasks = loadTasks();
-    const nextTasks = tasks.filter((task) => task.userId !== uid);
-    saveTasks(nextTasks);
-
-    notifyProfile(uid);
-    notifyTasks(uid);
+    profileListeners.forEach((listeners) => {
+      listeners.forEach((listener) => listener(null));
+    });
+    taskListeners.forEach((listeners) => {
+      listeners.forEach((listener) => listener([]));
+    });
   },
 };

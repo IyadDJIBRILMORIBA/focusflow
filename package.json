@@ -4,12 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "install:front": "npm --prefix front install",
-    "install:back": "npm --prefix back install",
+    "install:back": "cd back && composer install",
     "install:all": "npm run install:front && npm run install:back",
     "dev:front": "npm --prefix front run dev",
-    "dev:back": "npm --prefix back run dev",
+    "dev:back": "cd back && php artisan serve --host=0.0.0.0 --port=4000",
     "build:front": "npm --prefix front run build",
-    "build:back": "npm --prefix back run build",
+    "build:back": "cd back && php artisan optimize",
     "build:all": "npm run build:front && npm run build:back"
   }
 }

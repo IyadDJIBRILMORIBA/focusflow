@@ -1,42 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppUser } from '../types';
+import { firebaseService } from '../services/firebase';
 
-interface StoredUser extends AppUser {
-  password: string;
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:4000/api';
+
+interface AuthResponse {
+  token: string;
+  user: AppUser;
 }
 
-const USERS_STORAGE_KEY = 'focusflow_local_users';
-const SESSION_STORAGE_KEY = 'focusflow_current_user_uid';
-
-function loadUsers(): StoredUser[] {
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set('Accept', 'application/json');
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
-}
 
-function saveUsers(users: StoredUser[]) {
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-}
-
-function toAppUser(user: StoredUser): AppUser {
-  return {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
-    photoURL: user.photoURL ?? null,
-  };
-}
-
-function generateUid() {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
+  const token = firebaseService.getAuthToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
-  return `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const apiErrors = data?.errors ? Object.values<string[]>(data.errors).flat() : [];
+    const message = apiErrors[0] ?? data?.message ?? 'Erreur d’authentification.';
+    throw new Error(message);
+  }
+
+  return data as T;
 }
 
 export function useAuth() {
@@ -46,38 +45,42 @@ export function useAuth() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sessionUid = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!sessionUid) {
-      setUser(null);
-      setIsAuthReady(true);
-      return;
-    }
+    const bootstrapAuth = async () => {
+      const token = firebaseService.getAuthToken();
+      if (!token) {
+        setIsAuthReady(true);
+        return;
+      }
 
-    const users = loadUsers();
-    const currentUser = users.find((storedUser) => storedUser.uid === sessionUid) ?? null;
-    setUser(currentUser ? toAppUser(currentUser) : null);
-    setIsAuthReady(true);
+      try {
+        const currentUser = await request<AppUser>('/auth/me', { method: 'GET' });
+        setUser(currentUser);
+      } catch {
+        firebaseService.clearAuthToken();
+        setUser(null);
+      } finally {
+        setIsAuthReady(true);
+      }
+    };
+
+    bootstrapAuth().catch(() => {
+      setIsAuthReady(true);
+    });
   }, []);
 
   const handleLogin = async (email: string, password: string) => {
     setIsAuthLoading(true);
     setAuthError(null);
     try {
-      const users = loadUsers();
-      const existingUser = users.find(
-        (storedUser) => storedUser.email.toLowerCase() === email.toLowerCase() && storedUser.password === password,
-      );
-
-      if (!existingUser) {
-        setAuthError('Email ou mot de passe incorrect.');
-        return;
-      }
-
-      localStorage.setItem(SESSION_STORAGE_KEY, existingUser.uid);
-      setUser(toAppUser(existingUser));
+      const auth = await request<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      firebaseService.setAuthToken(auth.token);
+      setUser(auth.user);
     } catch (error) {
       console.error('Login failed', error);
-      setAuthError('Connexion impossible. Réessayez.');
+      setAuthError(error instanceof Error ? error.message : 'Connexion impossible. Réessayez.');
     } finally {
       setIsAuthLoading(false);
     }
@@ -98,37 +101,41 @@ export function useAuth() {
         return;
       }
 
-      const users = loadUsers();
-      const alreadyExists = users.some((storedUser) => storedUser.email.toLowerCase() === email.toLowerCase());
-      if (alreadyExists) {
-        setAuthError('Cet email est déjà utilisé. Connectez-vous à la place.');
-        return;
-      }
+      const nameFromEmail = email
+        .split('@')[0]
+        .split(/[._]/)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
 
-      const nameFromEmail = email.split('@')[0].split(/[._]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
-      const newUser: StoredUser = {
-        uid: generateUid(),
-        email,
-        password,
-        displayName: nameFromEmail || 'Utilisateur',
-        photoURL: null,
-      };
+      const auth = await request<AuthResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: nameFromEmail || 'Utilisateur',
+          email,
+          password,
+          password_confirmation: password,
+        }),
+      });
 
-      const updatedUsers = [...users, newUser];
-      saveUsers(updatedUsers);
-      localStorage.setItem(SESSION_STORAGE_KEY, newUser.uid);
-      setUser(toAppUser(newUser));
+      firebaseService.setAuthToken(auth.token);
+      setUser(auth.user);
     } catch (error) {
       console.error('Registration failed', error);
-      setAuthError('Inscription impossible. Réessayez avec un email valide et un mot de passe plus fort.');
+      setAuthError(error instanceof Error ? error.message : 'Inscription impossible. Réessayez.');
     } finally {
       setIsAuthLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-    setUser(null);
+  const handleLogout = async () => {
+    try {
+      await request('/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout failed', error);
+    } finally {
+      firebaseService.clearAuthToken();
+      setUser(null);
+    }
   };
 
   return {
