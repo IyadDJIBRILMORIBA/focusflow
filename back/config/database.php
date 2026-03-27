@@ -16,6 +16,10 @@ if (! $defaultConnection) {
     $defaultConnection = env('APP_ENV') === 'production' ? 'pgsql' : 'sqlite';
 }
 
+if (env('APP_ENV') === 'production' && $defaultConnection === 'sqlite') {
+    $defaultConnection = 'pgsql';
+}
+
 return [
 
     /*
