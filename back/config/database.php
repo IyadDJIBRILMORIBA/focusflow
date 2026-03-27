@@ -3,38 +3,10 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
-// CRITICAL: On Render, we must read DATABASE_URL from the actual process environment
-// because Laravel's env() helper reads from .env file which isn't updated at runtime
-// We use $_SERVER which contains environment variables passed to PHP
-
-// Helper function to read from actual OS environment (Render injects here)
-if (!function_exists('getOsEnv')) {
-    function getOsEnv($key, $default = null) {
-        // Try $_SERVER first (most reliable for PHP-FPM and CLI)
-        if (isset($_SERVER[$key])) {
-            return $_SERVER[$key];
-        }
-        // Try $_ENV (less reliable but still checked)
-        if (isset($_ENV[$key])) {
-            return $_ENV[$key];
-        }
-        // Try getenv() as last resort
-        $value = getenv($key);
-        if ($value !== false) {
-            return $value;
-        }
-        // Fall back to .env via Laravel's env() helper
-        return env($key, $default);
-    }
-}
-
-// Determine environment  
-$appEnv = getOsEnv('APP_ENV') ?: env('APP_ENV', 'local');
-
 // Force pgsql in production, sqlite in local/testing
 $defaultConnection = env('DB_CONNECTION');
 
-if ($appEnv === 'production') {
+if (env('APP_ENV') === 'production') {
     // Always use PostgreSQL in production
     $defaultConnection = 'pgsql';
 } elseif (! $defaultConnection) {
@@ -42,12 +14,9 @@ if ($appEnv === 'production') {
     $defaultConnection = 'sqlite';
 }
 
-// **CRITICAL**: Read DATABASE_URL directly from Render's OS environment
-// Render provides: DATABASE_URL=postgresql://user:pass@host:port/dbname
-$databaseUrl = getOsEnv('DATABASE_URL') 
-    ?: getOsEnv('DB_URL')
-    ?: env('DATABASE_URL')
-    ?: env('DB_URL')
+// Get database URL (Docker entrypoint updates .env with Render's DATABASE_URL)
+$databaseUrl = env('DATABASE_URL') 
+    ?: env('DB_URL') 
     ?: '';
 
 // Default credentials (SQLite or local defaults)
