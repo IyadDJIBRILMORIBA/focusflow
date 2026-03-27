@@ -45,6 +45,10 @@ services:
         value: database
       - key: FRONTEND_URL
         sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CORS_ALLOWED_ORIGIN_PATTERNS
+        sync: false
 
 databases:
   - name: focusflow-db
