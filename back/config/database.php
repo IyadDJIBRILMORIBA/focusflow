@@ -3,10 +3,21 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+// Helper function to read from OS environment (not .env file)
+if (!function_exists('getOsEnv')) {
+    function getOsEnv($key, $default = null) {
+        $value = $_SERVER[$key] ?? $_ENV[$key] ?? getenv($key) ?? $default;
+        return $value === false ? $default : $value;
+    }
+}
+
+// Determine environment
+$appEnv = getOsEnv('APP_ENV') ?: env('APP_ENV', 'local');
+
 // Force pgsql in production, sqlite in local/testing
 $defaultConnection = env('DB_CONNECTION');
 
-if (env('APP_ENV') === 'production') {
+if ($appEnv === 'production') {
     // Always use PostgreSQL in production
     $defaultConnection = 'pgsql';
 } elseif (! $defaultConnection) {
@@ -14,9 +25,11 @@ if (env('APP_ENV') === 'production') {
     $defaultConnection = 'sqlite';
 }
 
-// Get database URL (Docker startup script writes Render DB_URL to .env)
-$databaseUrl = env('DATABASE_URL') 
-    ?: env('DB_URL') 
+// Get database URL from OS environment (Render injects this at runtime)
+$databaseUrl = getOsEnv('DATABASE_URL') 
+    ?: getOsEnv('DB_URL')
+    ?: env('DATABASE_URL')
+    ?: env('DB_URL')
     ?: '';
 
 // Default credentials (SQLite or local defaults)
