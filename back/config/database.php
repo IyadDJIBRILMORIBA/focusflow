@@ -5,6 +5,7 @@ use Pdo\Mysql;
 
 $databaseUrl = env('DB_URL', env('DATABASE_URL'));
 $isPostgresUrl = is_string($databaseUrl) && preg_match('/^postgres(ql)?:\/\//i', $databaseUrl) === 1;
+$hasDatabaseHost = is_string(env('DB_HOST')) && env('DB_HOST') !== '';
 
 $defaultConnection = env('DB_CONNECTION');
 
@@ -17,6 +18,10 @@ if (! $defaultConnection) {
 }
 
 if (env('APP_ENV') === 'production' && $defaultConnection === 'sqlite') {
+    $defaultConnection = 'pgsql';
+}
+
+if ($defaultConnection === 'sqlite' && ($isPostgresUrl || $hasDatabaseHost)) {
     $defaultConnection = 'pgsql';
 }
 
