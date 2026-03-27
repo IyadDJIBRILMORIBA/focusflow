@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with daily capacity settings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "dailyCapacity": { "type": "number", "description": "Daily work capacity in minutes" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "dailyCapacity"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task with estimation, deadline, priority and tags.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner of the task" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "estimatedDuration": { "type": "number", "description": "Estimated time in minutes" },
+        "deadline": { "type": "string", "format": "date-time" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "aiFeedback": { "type": "string" },
+        "isOptimistic": { "type": "boolean" }
+      },
+      "required": ["userId", "title", "estimatedDuration", "deadline", "status", "priority"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User settings"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Tasks for all users"
+    }
+  }
+}

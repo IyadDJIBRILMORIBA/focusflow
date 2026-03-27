@@ -1,0 +1,5 @@
+{
+  "name": "FocusFlow",
+  "description": "Gestionnaire de tâches intelligent avec pilotage de charge réelle et scores de confiance.",
+  "requestFramePermissions": []
+}
