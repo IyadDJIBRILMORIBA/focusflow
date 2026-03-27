@@ -1,7 +1,7 @@
 FROM php:8.4-cli-alpine
 
-RUN apk add --no-cache git unzip icu-dev oniguruma-dev libzip-dev postgresql-client
-RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql
+RUN apk add --no-cache git unzip icu-dev oniguruma-dev libzip-dev postgresql-dev postgresql-client
+RUN docker-php-ext-install pdo_mysql pdo_pgsql
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
