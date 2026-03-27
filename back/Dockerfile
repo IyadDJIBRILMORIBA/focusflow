@@ -16,4 +16,14 @@ RUN php artisan key:generate --force
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "export APP_ENV=${APP_ENV:-production} DB_PORT=${DB_PORT:-5432}; export DB_URL=${DB_URL:-${DATABASE_URL:-${RENDER_POSTGRESQL_INTERNAL_URL:-${RENDER_POSTGRESQL_URL:-}}}}; if [ -n \"${DB_URL:-}\" ] && echo \"$DB_URL\" | grep -Eiq '^postgres(ql)?://'; then export DB_CONNECTION=pgsql; else export DB_CONNECTION=${DB_CONNECTION:-pgsql}; fi; if [ \"${DB_CONNECTION}\" = \"sqlite\" ] && { [ -n \"${DB_URL:-}\" ] || [ -n \"${DB_HOST:-}\" ] || [ -n \"${RENDER_POSTGRESQL_HOST:-}\" ]; }; then export DB_CONNECTION=pgsql; fi; if [ -z \"${DB_URL:-}\" ] && [ -z \"${DB_HOST:-}\" ] && [ -z \"${RENDER_POSTGRESQL_HOST:-}\" ]; then echo 'Missing DB config: set DB_URL/DATABASE_URL/RENDER_POSTGRESQL_INTERNAL_URL or DB_HOST'; exit 1; fi; php artisan config:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-4000}"]
+CMD ["sh", "-c", "set -e; \
+export APP_ENV=${APP_ENV:-production}; \
+export APP_DEBUG=${APP_DEBUG:-false}; \
+export DB_CONNECTION=pgsql; \
+export DB_URL=${DB_URL:-${DATABASE_URL:-${RENDER_POSTGRESQL_INTERNAL_URL:-${RENDER_POSTGRESQL_URL:-}}}}; \
+echo '[DB Bootstrap] DB_URL: '\"${DB_URL}\" >&2; \
+rm -rf bootstrap/cache/config.php storage/framework/cache/bootstrap.php 2>/dev/null || true; \
+php artisan config:clear --quiet 2>/dev/null || true; \
+php artisan cache:clear --quiet 2>/dev/null || true; \
+php artisan migrate --force --quiet; \
+php artisan serve --host=0.0.0.0 --port=${PORT:-4000}"]

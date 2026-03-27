@@ -3,36 +3,54 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
-$databaseUrl = env(
-    'DB_URL',
-    env(
-        'DATABASE_URL',
-        env('RENDER_POSTGRESQL_INTERNAL_URL', env('RENDER_POSTGRESQL_URL'))
-    )
-);
-$isPostgresUrl = is_string($databaseUrl) && preg_match('/^postgres(ql)?:\/\//i', $databaseUrl) === 1;
-$dbHost = env('DB_HOST', env('PGHOST', env('RENDER_POSTGRESQL_HOST', '127.0.0.1')));
-$dbPort = env('DB_PORT', env('PGPORT', env('RENDER_POSTGRESQL_PORT', '5432')));
-$dbDatabase = env('DB_DATABASE', env('PGDATABASE', env('RENDER_POSTGRESQL_DATABASE', 'laravel')));
-$dbUsername = env('DB_USERNAME', env('PGUSER', env('RENDER_POSTGRESQL_USER', 'root')));
-$dbPassword = env('DB_PASSWORD', env('PGPASSWORD', env('RENDER_POSTGRESQL_PASSWORD', '')));
-$hasDatabaseHost = (bool) env('DB_HOST') || (bool) env('PGHOST') || (bool) env('RENDER_POSTGRESQL_HOST');
+// Get the database URL from highest priority env sources
+$databaseUrl = env('DB_URL') ?: 
+               env('DATABASE_URL') ?: 
+               env('RENDER_POSTGRESQL_INTERNAL_URL') ?: 
+               env('RENDER_POSTGRESQL_URL') ?: 
+               '';
 
-$defaultConnection = env('DB_CONNECTION');
+// Parse PostgreSQL URL if present
+$dbHost = '127.0.0.1';
+$dbPort = '5432';
+$dbDatabase = 'laravel';
+$dbUsername = 'root';
+$dbPassword = '';
+$usePostgres = false;
 
-if ($isPostgresUrl) {
-    $defaultConnection = 'pgsql';
+if ($databaseUrl && preg_match('/^postgres(ql)?:\/\/(.+?)(?::(.+?))?@(.+?):(\d+)\/(.+)$/i', $databaseUrl, $matches)) {
+    // URL format: postgresql://username:password@host:port/database
+    $dbUsername = urldecode($matches[2]);
+    $dbPassword = urldecode($matches[3] ?? '');
+    $dbHost = $matches[4];
+    $dbPort = $matches[5] ?? '5432';
+    $dbDatabase = $matches[6];
+    $usePostgres = true;
+} else {
+    // Fallback to individual env vars if URL parsing failed
+    $dbHost = env('DB_HOST', env('PGHOST', env('RENDER_POSTGRESQL_HOST', '127.0.0.1')));
+    $dbPort = env('DB_PORT', env('PGPORT', env('RENDER_POSTGRESQL_PORT', '5432')));
+    $dbDatabase = env('DB_DATABASE', env('PGDATABASE', env('RENDER_POSTGRESQL_DATABASE', 'laravel')));
+    $dbUsername = env('DB_USERNAME', env('PGUSER', env('RENDER_POSTGRESQL_USER', 'root')));
+    $dbPassword = env('DB_PASSWORD', env('PGPASSWORD', env('RENDER_POSTGRESQL_PASSWORD', '')));
+    
+    // If any Render-specific vars are set, use PostgreSQL
+    if (env('RENDER_POSTGRESQL_HOST') || env('RENDER_POSTGRESQL_INTERNAL_URL')) {
+        $usePostgres = true;
+    }
 }
 
-if (! $defaultConnection) {
+// Determine connection type
+$defaultConnection = env('DB_CONNECTION');
+
+if ($usePostgres || ($databaseUrl && preg_match('/^postgres(ql)?:\/\//i', $databaseUrl))) {
+    $defaultConnection = 'pgsql';
+} elseif (! $defaultConnection) {
     $defaultConnection = env('APP_ENV') === 'production' ? 'pgsql' : 'sqlite';
 }
 
-if (env('APP_ENV') === 'production' && $defaultConnection === 'sqlite') {
-    $defaultConnection = 'pgsql';
-}
-
-if ($defaultConnection === 'sqlite' && ($isPostgresUrl || $hasDatabaseHost)) {
+// Force PostgreSQL if any PG config is detected in production
+if (env('APP_ENV') === 'production' && ($defaultConnection === 'sqlite' || !$defaultConnection) && ($databaseUrl || $usePostgres)) {
     $defaultConnection = 'pgsql';
 }
 
