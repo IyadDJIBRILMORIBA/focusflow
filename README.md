@@ -50,6 +50,49 @@ Services exposés :
 - API : `http://localhost:4000/api`
 - MySQL : `localhost:3307`
 
+## Déploiement backend sur Render
+
+Le repo contient un blueprint Render : `render.yaml`.
+
+### Option A — Blueprint (recommandé)
+
+1. Push sur GitHub (`masters`).
+2. Sur Render : **New +** → **Blueprint**.
+3. Sélectionne ce repo.
+4. Render va créer :
+	- un web service `focusflow-back` (Docker sur `back/`)
+	- une base PostgreSQL `focusflow-db`.
+5. Dans le service `focusflow-back`, renseigne :
+	- `APP_URL` = URL publique Render du backend (ex: `https://focusflow-back.onrender.com`)
+	- `FRONTEND_URL` = URL publique du frontend (ex: `https://focusflow-front.vercel.app`)
+6. Déploie.
+
+Le backend sera exposé sur :
+
+- `https://<render-backend>/api/health`
+- `https://<render-backend>/api/auth/register`
+
+### Option B — Service manuel
+
+Si tu crées le service manuellement, garde ces variables min:
+
+- `APP_ENV=production`
+- `APP_DEBUG=false`
+- `APP_KEY` (secret)
+- `DB_CONNECTION=pgsql`
+- `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
+- `SESSION_DRIVER=database`
+- `CACHE_STORE=database`
+- `QUEUE_CONNECTION=database`
+
+## Frontend en production
+
+Dans l'environnement du frontend, configure :
+
+- `VITE_API_URL=https://<render-backend>/api`
+
+Puis redéploie le frontend.
+
 ## Endpoints principaux
 
 - `POST /api/auth/register`
