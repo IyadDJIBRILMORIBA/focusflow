@@ -7,10 +7,9 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-COPY composer.json composer.lock ./
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader
-
 COPY . .
+
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader
 
 RUN cp -n .env.example .env || true
 RUN php artisan key:generate --force
