@@ -5,9 +5,8 @@ use Pdo\Mysql;
 
 // Force pgsql in production, sqlite in local/testing
 $defaultConnection = env('DB_CONNECTION');
-$isProduction = env('APP_ENV') === 'production';
 
-if ($isProduction) {
+if (env('APP_ENV') === 'production') {
     // Always use PostgreSQL in production
     $defaultConnection = 'pgsql';
 } elseif (! $defaultConnection) {
@@ -15,17 +14,10 @@ if ($isProduction) {
     $defaultConnection = 'sqlite';
 }
 
-// Try to read database URL from OS environment variables directly (bypass .env file for Render)
-// In production, Render injects these as OS env vars, not in .env
-$databaseUrl = $_ENV['DB_URL'] 
-    ?? $_ENV['DATABASE_URL'] 
-    ?? $_ENV['RENDER_POSTGRESQL_INTERNAL_URL'] 
-    ?? $_ENV['RENDER_POSTGRESQL_URL'] 
-    ?? env('DB_URL') 
-    ?? env('DATABASE_URL') 
-    ?? env('RENDER_POSTGRESQL_INTERNAL_URL') 
-    ?? env('RENDER_POSTGRESQL_URL') 
-    ?? '';
+// Get database URL (Docker startup script writes Render DB_URL to .env)
+$databaseUrl = env('DATABASE_URL') 
+    ?: env('DB_URL') 
+    ?: '';
 
 // Default credentials (SQLite or local defaults)
 $dbHost = '127.0.0.1';

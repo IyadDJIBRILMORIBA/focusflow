@@ -3,10 +3,6 @@ FROM php:8.4-cli-alpine
 RUN apk add --no-cache git unzip icu-dev oniguruma-dev libzip-dev postgresql-dev postgresql-client
 RUN docker-php-ext-install pdo_mysql pdo_pgsql
 
-# Ensure PHP reads environment variables (not just from .env file)
-RUN echo "variables_order=EGPCS" >> /usr/local/etc/php/php.ini && \
-    echo "auto_prepend_file=" >> /usr/local/etc/php/php.ini
-
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
@@ -22,26 +18,23 @@ EXPOSE 4000
 
 CMD ["sh", "-c", "set -e; \
 \
-echo '=== [DIAGNOSTIC] ENV VARS AVAILABLE ===' >&2; \
-echo 'DB_URL='${DB_URL} >&2; \
-echo 'DATABASE_URL='${DATABASE_URL} >&2; \
-echo 'RENDER_POSTGRESQL_INTERNAL_URL='${RENDER_POSTGRESQL_INTERNAL_URL} >&2; \
-echo 'RENDER_POSTGRESQL_URL='${RENDER_POSTGRESQL_URL} >&2; \
-echo 'RENDER_POSTGRESQL_HOST='${RENDER_POSTGRESQL_HOST} >&2; \
-echo 'PGHOST='${PGHOST} >&2; \
-echo 'PGUSER='${PGUSER} >&2; \
-echo 'PGPORT='${PGPORT} >&2; \
-echo 'PGDATABASE='${PGDATABASE} >&2; \
-echo '=====================================' >&2; \
+echo '=== [BOOTSTRAP] Updating .env with Render vars ===' >&2; \
 \
-export APP_ENV=${APP_ENV:-production}; \
-export APP_DEBUG=${APP_DEBUG:-false}; \
-export DB_CONNECTION=pgsql; \
-export DB_URL=${DB_URL:-${DATABASE_URL:-${RENDER_POSTGRESQL_INTERNAL_URL:-${RENDER_POSTGRESQL_URL:-}}}}; \
+if [ -n \"\\$DB_URL\" ]; then \
+  sed -i \"s|^DATABASE_URL=.*|DATABASE_URL=\\${DB_URL}|\" .env || echo \"DATABASE_URL=\\${DB_URL}\" >> .env; \
+fi; \
+\
+if [ -n \"\\$APP_ENV\" ]; then \
+  sed -i \"s|^APP_ENV=.*|APP_ENV=\\${APP_ENV}|\" .env || echo \"APP_ENV=\\${APP_ENV}\" >> .env; \
+else \
+  sed -i \"s|^APP_ENV=.*|APP_ENV=production|\" .env || echo \"APP_ENV=production\" >> .env; \
+fi; \
+\
+sed -i \"s|^DB_CONNECTION=.*|DB_CONNECTION=pgsql|\" .env || echo \"DB_CONNECTION=pgsql\" >> .env; \
 \
 rm -rf bootstrap/cache/config.php storage/framework/cache/bootstrap.php 2>/dev/null || true; \
 php artisan config:clear --quiet 2>/dev/null || true; \
 php artisan cache:clear --quiet 2>/dev/null || true; \
 \
 php artisan migrate --force --quiet; \
-php artisan serve --host=0.0.0.0 --port=${PORT:-4000}"]
+php artisan serve --host=0.0.0.0 --port=\${PORT:-4000}"]
