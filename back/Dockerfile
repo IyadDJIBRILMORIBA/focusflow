@@ -16,4 +16,4 @@ RUN php artisan key:generate --force
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "export APP_ENV=${APP_ENV:-production} DB_CONNECTION=${DB_CONNECTION:-pgsql} DB_PORT=${DB_PORT:-5432}; if [ -z \"${DB_URL:-}\" ] && [ -z \"${DB_HOST:-}\" ]; then echo 'Missing DB config: set DB_URL or DB_HOST'; exit 1; fi; php artisan config:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-4000}"]
+CMD ["sh", "-c", "export APP_ENV=${APP_ENV:-production} DB_PORT=${DB_PORT:-5432}; export DB_URL=${DB_URL:-${DATABASE_URL:-}}; if [ -n \"${DB_URL:-}\" ] && echo \"$DB_URL\" | grep -Eiq '^postgres(ql)?://'; then export DB_CONNECTION=pgsql; else export DB_CONNECTION=${DB_CONNECTION:-pgsql}; fi; if [ -z \"${DB_URL:-}\" ] && [ -z \"${DB_HOST:-}\" ]; then echo 'Missing DB config: set DB_URL/DATABASE_URL or DB_HOST'; exit 1; fi; php artisan config:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-4000}"]
