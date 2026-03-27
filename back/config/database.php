@@ -43,15 +43,17 @@ if ($databaseUrl && preg_match('/^postgres(ql)?:\/\/(.+?)(?::(.+?))?@(.+?):(\d+)
 // Determine connection type
 $defaultConnection = env('DB_CONNECTION');
 
+// If a PostgreSQL URL is present, always use it
 if ($usePostgres || ($databaseUrl && preg_match('/^postgres(ql)?:\/\//i', $databaseUrl))) {
     $defaultConnection = 'pgsql';
 } elseif (! $defaultConnection) {
-    $defaultConnection = env('APP_ENV') === 'production' ? 'pgsql' : 'sqlite';
-}
-
-// Force PostgreSQL if any PG config is detected in production
-if (env('APP_ENV') === 'production' && ($defaultConnection === 'sqlite' || !$defaultConnection) && ($databaseUrl || $usePostgres)) {
-    $defaultConnection = 'pgsql';
+    // Default: use sqlite for local/testing, pgsql for production
+    // But only force pgsql in production if we're NOT running tests
+    if (env('APP_ENV') === 'production' && !defined('LARAVEL_START')) {
+        $defaultConnection = 'pgsql';
+    } else {
+        $defaultConnection = 'sqlite';
+    }
 }
 
 return [
